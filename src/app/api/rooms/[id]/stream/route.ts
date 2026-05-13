@@ -4,6 +4,8 @@ import { db } from "@/db/client";
 import { rooms } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { loadRoomState } from "@/lib/roomState";
+import { getSessionId } from "@/lib/session";
+import { markPresenceClose, markPresenceOpen } from "@/lib/leave";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +14,10 @@ export const maxDuration = 300;
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  const sessionId = await getSessionId();
   return createSSE((send) => {
     let stopped = false;
+    if (sessionId) markPresenceOpen(id, sessionId);
 
     // 초기 상태 전송
     (async () => {
@@ -51,6 +55,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       stopped = true;
       clearInterval(tick);
       unsub();
+      if (sessionId) markPresenceClose(id, sessionId);
     };
   });
 }

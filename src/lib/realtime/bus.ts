@@ -19,14 +19,17 @@ export function subscribe(channel: string, listener: Listener): () => void {
     channels.set(channel, set);
   }
   set.add(listener);
+  console.log(`[bus] sub ${channel} → ${set.size} listeners`);
   return () => {
     set!.delete(listener);
+    console.log(`[bus] unsub ${channel} → ${set!.size} listeners`);
     if (set!.size === 0) channels.delete(channel);
   };
 }
 
 export function publish(channel: string, event: string, data: unknown): void {
   const set = channels.get(channel);
+  console.log(`[bus] pub ${channel} ${event} → ${set?.size ?? 0} listeners`);
   if (!set) return;
   for (const l of set) {
     try {

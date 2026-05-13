@@ -50,20 +50,9 @@ export function GameView({
     return () => es.close();
   }, [state.id, router]);
 
-  // 페이지 이탈(탭 닫기/새로고침/뒤로) 시 leave 알림.
-  // 게임 진행 중인 본인에 한해서만 (관전자/이미 종료된 방 제외).
-  useEffect(() => {
-    const inRoom = state.hostSessionId === mySessionId || state.guestSessionId === mySessionId;
-    if (!inRoom || state.status === "finished") return;
-    const url = `/api/rooms/${state.id}/leave`;
-    const handler = () => {
-      navigator.sendBeacon?.(url, new Blob([], { type: "text/plain" }));
-    };
-    window.addEventListener("pagehide", handler);
-    return () => {
-      window.removeEventListener("pagehide", handler);
-    };
-  }, [state.id, state.status, state.hostSessionId, state.guestSessionId, mySessionId]);
+  // 명시적인 pagehide 처리는 하지 않음 — 새로고침도 함께 잡혀버려서
+  // 호스트의 방이 통째로 사라지는 문제가 있다. 대신 서버측에서 SSE 끊김 +
+  // grace period 로 leave 를 감지한다 ([id]/stream/route.ts).
 
   const isHost = state.hostSessionId === mySessionId;
   const isGuest = state.guestSessionId === mySessionId;
