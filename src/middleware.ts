@@ -17,5 +17,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // /api/ 는 제외 — 라우트 핸들러가 직접 쿠키를 다루고, SSE 스트리밍 응답에
+  // 미들웨어가 끼어드는 걸 막기 위함.
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

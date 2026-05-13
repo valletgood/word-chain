@@ -8,8 +8,9 @@ declare global {
   var __wc_bus__: Map<string, Set<Listener>> | undefined;
 }
 
+const g = globalThis as typeof globalThis & { __wc_bus__?: Map<string, Set<Listener>> };
 const channels: Map<string, Set<Listener>> =
-  global.__wc_bus__ ?? (global.__wc_bus__ = new Map());
+  g.__wc_bus__ ?? (g.__wc_bus__ = new Map());
 
 export function subscribe(channel: string, listener: Listener): () => void {
   let set = channels.get(channel);

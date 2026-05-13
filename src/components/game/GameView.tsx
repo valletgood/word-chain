@@ -30,20 +30,21 @@ export function GameView({
   // SSE
   useEffect(() => {
     const es = new EventSource(`/api/rooms/${state.id}/stream`);
-    es.addEventListener("state", (e) => {
-      setState(JSON.parse((e as MessageEvent).data));
-    });
-    es.addEventListener("turn_changed", (e) => {
-      setState(JSON.parse((e as MessageEvent).data));
-    });
-    es.addEventListener("game_over", (e) => {
-      setState(JSON.parse((e as MessageEvent).data));
-    });
-    es.addEventListener("room_updated", (e) => {
-      setState(JSON.parse((e as MessageEvent).data));
-    });
-    es.addEventListener("word_submitted", (e) => {
-      const w = JSON.parse((e as MessageEvent).data) as WordRow;
+    es.onopen = () => console.log("[sse] open", state.id);
+    es.onerror = (e) => console.warn("[sse] error", e);
+    const on = (name: string, fn: (data: unknown) => void) => {
+      es.addEventListener(name, (e) => {
+        const data = JSON.parse((e as MessageEvent).data);
+        console.log("[sse]", name, data);
+        fn(data);
+      });
+    };
+    on("state", (d) => setState(d as RoomState));
+    on("turn_changed", (d) => setState(d as RoomState));
+    on("game_over", (d) => setState(d as RoomState));
+    on("room_updated", (d) => setState(d as RoomState));
+    on("word_submitted", (d) => {
+      const w = d as WordRow;
       setState((cur) => ({
         ...cur,
         words: [...cur.words.filter((x) => x.id !== w.id), w].sort(
