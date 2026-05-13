@@ -30,14 +30,8 @@ export function GameView({
   // SSE
   useEffect(() => {
     const es = new EventSource(`/api/rooms/${state.id}/stream`);
-    es.onopen = () => console.log("[sse] open", state.id);
-    es.onerror = (e) => console.warn("[sse] error", e);
     const on = (name: string, fn: (data: unknown) => void) => {
-      es.addEventListener(name, (e) => {
-        const data = JSON.parse((e as MessageEvent).data);
-        console.log("[sse]", name, data);
-        fn(data);
-      });
+      es.addEventListener(name, (e) => fn(JSON.parse((e as MessageEvent).data)));
     };
     on("state", (d) => setState(d as RoomState));
     on("turn_changed", (d) => setState(d as RoomState));
