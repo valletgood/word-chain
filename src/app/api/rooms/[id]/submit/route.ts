@@ -51,8 +51,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         .set({ status: "finished", winnerSessionId: winner, loserReason: "timeout", updatedAt: new Date() })
         .where(eq(rooms.id, id));
       const state = await loadRoomState(id);
-      publish(CH.room(id), "game_over", state);
-      publish(CH.lobby, "room_removed", { id });
+      await publish(CH.room(id), "game_over", state);
+      await publish(CH.lobby, "room_removed", { id });
       return NextResponse.json({ error: "시간 초과" }, { status: 410 });
     }
   }
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     })
     .returning();
 
-  publish(CH.room(id), "word_submitted", toWordRow(inserted));
+  await publish(CH.room(id), "word_submitted", toWordRow(inserted));
 
   if (result.ok) {
     // 턴 전환 (첫 단어면 host→guest, 아니면 상대로)
@@ -122,8 +122,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .where(eq(rooms.id, id));
 
     const state = await loadRoomState(id);
-    publish(CH.room(id), "turn_changed", state);
-    if (isFirstWord) publish(CH.lobby, "room_updated", { id });
+    await publish(CH.room(id), "turn_changed", state);
+    if (isFirstWord) await publish(CH.lobby, "room_updated", { id });
   }
 
   return NextResponse.json({ ok: result.ok, reason: result.reason ?? null });

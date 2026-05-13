@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RoomState, WordRow } from "@/types/game";
 import { SheetToolbar } from "@/components/SheetHeader";
+import { getSupabase } from "@/lib/supabase";
+import { CH } from "@/lib/realtime/bus";
 
 const INVALID_LABEL: Record<string, string> = {
   single_char: "한 글자 단어 금지",
@@ -27,19 +29,17 @@ export function GameView({
   const [msg, setMsg] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // SSE
+  // Supabase Realtime — 방 채널 구독
   useEffect(() => {
-    const es = new EventSource(`/api/rooms/${state.id}/stream`);
-    const on = (name: string, fn: (data: unknown) => void) => {
-      es.addEventListener(name, (e) => fn(JSON.parse((e as MessageEvent).data)));
-    };
-    on("state", (d) => setState(d as RoomState));
-    on("turn_changed", (d) => setState(d as RoomState));
-    on("game_over", (d) => setState(d as RoomState));
-    on("room_updated", (d) => setState(d as RoomState));
-    on("room_closed", () => router.replace("/"));
-    on("word_submitted", (d) => {
-      const w = d as WordRow;
+    const supabase = getSupabase();
+    const channel = supabase.channel(CH.room(state.id));
+    const setStateFromPayload = (p: unknown) => setState(p as RoomState);
+    channel.on("broadcast", { event: "turn_changed" }, ({ payload }) => setStateFromPayload(payload));
+    channel.on("broadcast", { event: "game_over" }, ({ payload }) => setStateFromPayload(payload));
+    channel.on("broadcast", { event: "room_updated" }, ({ payload }) => setStateFromPayload(payload));
+    channel.on("broadcast", { event: "room_closed" }, () => router.replace("/"));
+    channel.on("broadcast", { event: "word_submitted" }, ({ payload }) => {
+      const w = payload as WordRow;
       setState((cur) => ({
         ...cur,
         words: [...cur.words.filter((x) => x.id !== w.id), w].sort(
@@ -47,12 +47,11 @@ export function GameView({
         ),
       }));
     });
-    return () => es.close();
+    channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [state.id, router]);
-
-  // 명시적인 pagehide 처리는 하지 않음 — 새로고침도 함께 잡혀버려서
-  // 호스트의 방이 통째로 사라지는 문제가 있다. 대신 서버측에서 SSE 끊김 +
-  // grace period 로 leave 를 감지한다 ([id]/stream/route.ts).
 
   const isHost = state.hostSessionId === mySessionId;
   const isGuest = state.guestSessionId === mySessionId;

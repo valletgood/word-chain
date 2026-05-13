@@ -42,8 +42,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .where(eq(rooms.id, id));
 
   const state = await loadRoomState(id);
-  publish(CH.room(id), "room_updated", state);
-  publish(CH.lobby, "room_updated", {
+  await publish(CH.room(id), "room_updated", state);
+  await publish(CH.lobby, "room_updated", {
     id: room.id,
     name: room.name,
     hostNickname: room.hostNickname,

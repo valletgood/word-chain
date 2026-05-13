@@ -1,6 +1,10 @@
 # 끝말잇기 (Word Chain)
 
-한국어 끝말잇기 1:1 실시간 웹게임. Next.js + React 19 + Drizzle ORM + Supabase + SSE.
+한국어 끝말잇기 1:1 실시간 웹게임. Next.js + React 19 + Drizzle ORM + Supabase (Postgres + Realtime Broadcast).
+
+실시간 동기화는 Supabase Realtime Broadcast 로 수행한다 — 서버는 HTTP REST 로
+브로드캐스트 발행, 클라이언트는 `@supabase/supabase-js` 채널로 구독. Vercel
+서버리스에서도 인스턴스 격리 없이 동작한다.
 
 ## 셋업
 
@@ -11,9 +15,13 @@
 
 2. `.env.local` 작성 (`.env.local.example` 참고)
    ```
-   DATABASE_URL=postgresql://...      # Supabase Postgres pooled URL
-   STDICT_API_KEY=...                 # 국립국어원 표준국어대사전 오픈API 키
+   DATABASE_URL=postgresql://...                  # Supabase Postgres pooled URL
+   NEXT_PUBLIC_SUPABASE_URL=https://[ref].supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...        # Supabase anon key
+   STDICT_API_KEY=...                              # 국립국어원 표준국어대사전 오픈API 키
    ```
+
+   Vercel 에 배포할 때도 동일한 4개 env var 를 프로젝트 설정에 등록.
 
 3. DB 스키마 적용
    ```bash

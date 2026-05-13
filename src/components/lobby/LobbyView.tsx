@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RoomListItem } from "@/types/game";
 import { SheetToolbar } from "@/components/SheetHeader";
+import { getSupabase } from "@/lib/supabase";
+import { CH } from "@/lib/realtime/bus";
 
 const NICK_KEY = "wc_nickname";
 
@@ -23,22 +25,26 @@ export function LobbyView({ initialRooms }: { initialRooms: RoomListItem[] }) {
     if (nickname) localStorage.setItem(NICK_KEY, nickname);
   }, [nickname]);
 
-  // SSE 로비 구독
+  // Supabase Realtime — 로비 채널 구독
   useEffect(() => {
-    const es = new EventSource("/api/rooms/stream");
-    es.addEventListener("room_created", (e) => {
-      const r = JSON.parse((e as MessageEvent).data) as RoomListItem;
+    const supabase = getSupabase();
+    const channel = supabase.channel(CH.lobby);
+    channel.on("broadcast", { event: "room_created" }, ({ payload }) => {
+      const r = payload as RoomListItem;
       setRooms((cur) => [r, ...cur.filter((x) => x.id !== r.id)]);
     });
-    es.addEventListener("room_updated", (e) => {
-      const r = JSON.parse((e as MessageEvent).data) as Partial<RoomListItem> & { id: string };
+    channel.on("broadcast", { event: "room_updated" }, ({ payload }) => {
+      const r = payload as Partial<RoomListItem> & { id: string };
       setRooms((cur) => cur.map((x) => (x.id === r.id ? { ...x, ...r } : x)));
     });
-    es.addEventListener("room_removed", (e) => {
-      const r = JSON.parse((e as MessageEvent).data) as { id: string };
+    channel.on("broadcast", { event: "room_removed" }, ({ payload }) => {
+      const r = payload as { id: string };
       setRooms((cur) => cur.filter((x) => x.id !== r.id));
     });
-    return () => es.close();
+    channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function ensureSession() {

@@ -48,6 +48,6 @@ export async function POST(req: NextRequest) {
     })
     .returning();
 
-  publish(CH.lobby, "room_created", toListItem(room));
+  await publish(CH.lobby, "room_created", toListItem(room));
   return NextResponse.json({ room: toListItem(room) });
 }
