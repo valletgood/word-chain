@@ -37,6 +37,7 @@ export function GameView({
     on("turn_changed", (d) => setState(d as RoomState));
     on("game_over", (d) => setState(d as RoomState));
     on("room_updated", (d) => setState(d as RoomState));
+    on("room_closed", () => router.replace("/"));
     on("word_submitted", (d) => {
       const w = d as WordRow;
       setState((cur) => ({
@@ -47,7 +48,22 @@ export function GameView({
       }));
     });
     return () => es.close();
-  }, [state.id]);
+  }, [state.id, router]);
+
+  // 페이지 이탈(탭 닫기/새로고침/뒤로) 시 leave 알림.
+  // 게임 진행 중인 본인에 한해서만 (관전자/이미 종료된 방 제외).
+  useEffect(() => {
+    const inRoom = state.hostSessionId === mySessionId || state.guestSessionId === mySessionId;
+    if (!inRoom || state.status === "finished") return;
+    const url = `/api/rooms/${state.id}/leave`;
+    const handler = () => {
+      navigator.sendBeacon?.(url, new Blob([], { type: "text/plain" }));
+    };
+    window.addEventListener("pagehide", handler);
+    return () => {
+      window.removeEventListener("pagehide", handler);
+    };
+  }, [state.id, state.status, state.hostSessionId, state.guestSessionId, mySessionId]);
 
   const isHost = state.hostSessionId === mySessionId;
   const isGuest = state.guestSessionId === mySessionId;
@@ -104,7 +120,16 @@ export function GameView({
         title={`끝말잇기 — ${state.name}`}
         right={
           <button
-            onClick={() => router.push("/")}
+            onClick={async () => {
+              const inRoom =
+                state.hostSessionId === mySessionId || state.guestSessionId === mySessionId;
+              if (inRoom && state.status !== "finished") {
+                try {
+                  await fetch(`/api/rooms/${state.id}/leave`, { method: "POST" });
+                } catch {}
+              }
+              router.push("/");
+            }}
             className="h-7 border border-sheet-headerBorder bg-white px-3 text-sm hover:bg-sheet-header"
           >
             로비로
