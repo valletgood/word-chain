@@ -28,6 +28,7 @@ export function GameView({
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   // Supabase Realtime — 방 채널 구독
   useEffect(() => {
@@ -52,6 +53,16 @@ export function GameView({
       supabase.removeChannel(channel);
     };
   }, [state.id, router]);
+
+  // 단어가 추가될 때 시트 최하단으로 스크롤. 단, 게임이 종료되면 상단 배너를 보여줘야
+  // 하므로 스크롤하지 않는다.
+  useEffect(() => {
+    if (state.status === "finished") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [state.words.length, state.status]);
 
   const isHost = state.hostSessionId === mySessionId;
   const isGuest = state.guestSessionId === mySessionId;
@@ -105,27 +116,44 @@ export function GameView({
   return (
     <div className="min-h-screen bg-white">
       <SheetToolbar
-        title={`끝말잇기 — ${state.name}`}
+        title={`개발 검토서 — ${state.name}`}
         right={
-          <button
-            onClick={async () => {
-              const inRoom =
-                state.hostSessionId === mySessionId || state.guestSessionId === mySessionId;
-              if (inRoom && state.status !== "finished") {
-                try {
-                  await fetch(`/api/rooms/${state.id}/leave`, { method: "POST" });
-                } catch {}
-              }
-              router.push("/");
-            }}
-            className="h-7 border border-sheet-headerBorder bg-white px-3 text-sm hover:bg-sheet-header"
-          >
-            로비로
-          </button>
+          <div className="flex items-center gap-2">
+            {amInRoom && state.status === "playing" && (
+              <button
+                onClick={async () => {
+                  if (!confirm("기권하시겠습니까? 패배 처리됩니다.")) return;
+                  try {
+                    await fetch(`/api/rooms/${state.id}/surrender`, { method: "POST" });
+                  } catch {}
+                }}
+                className="h-7 border border-sheet-errorText bg-white px-3 text-sm text-sheet-errorText hover:bg-sheet-error"
+              >
+                기권
+              </button>
+            )}
+            <button
+              onClick={async () => {
+                const inRoom =
+                  state.hostSessionId === mySessionId || state.guestSessionId === mySessionId;
+                if (inRoom && state.status !== "finished") {
+                  try {
+                    await fetch(`/api/rooms/${state.id}/leave`, { method: "POST" });
+                  } catch {}
+                }
+                router.push("/");
+              }}
+              className="h-7 border border-sheet-headerBorder bg-white px-3 text-sm hover:bg-sheet-header"
+            >
+              로비로
+            </button>
+          </div>
         }
       />
 
       <StatusBar state={state} mySessionId={mySessionId} myNickname={myNickname} />
+
+      {state.status === "finished" && <GameOverBanner state={state} mySessionId={mySessionId} />}
 
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
@@ -214,13 +242,7 @@ export function GameView({
                     />
                   </form>
                 </td>
-                <td className="border border-sheet-border px-2 py-1">
-                  {state.status === "playing" && state.turnDeadline ? (
-                    <Countdown deadline={state.turnDeadline} />
-                  ) : (
-                    <span className="text-[#5f6368]">—</span>
-                  )}
-                </td>
+                <td className="border border-sheet-border px-2 py-1 text-[#5f6368]">—</td>
                 <td className="border border-sheet-border px-2 py-1 text-xs">
                   {msg && <span className="text-sheet-errorText">{msg}</span>}
                   {canSubmit && !msg && <span className="text-[#5f6368]">Enter 로 제출</span>}
@@ -229,9 +251,8 @@ export function GameView({
             )}
           </tbody>
         </table>
+        <div ref={bottomRef} />
       </div>
-
-      {state.status === "finished" && <GameOverBanner state={state} mySessionId={mySessionId} />}
     </div>
   );
 }
@@ -272,32 +293,44 @@ function StatusBar({
   );
 }
 
-function Countdown({ deadline }: { deadline: string }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 200);
-    return () => clearInterval(t);
-  }, []);
-  const remain = Math.max(0, Math.ceil((new Date(deadline).getTime() - now) / 1000));
-  const color = remain <= 5 ? "text-sheet-errorText" : remain <= 10 ? "text-[#b06000]" : "text-black";
-  return <span className={`font-mono ${color}`}>{remain}s 남음</span>;
-}
-
 function GameOverBanner({ state, mySessionId }: { state: RoomState; mySessionId: string }) {
   const winnerNick =
     state.winnerSessionId === state.hostSessionId
       ? state.hostNickname
       : state.winnerSessionId === state.guestSessionId
       ? state.guestNickname
-      : "?";
+      : null;
   const youWon = state.winnerSessionId === mySessionId;
+  const reasonLabel: Record<string, string> = {
+    surrender: "기권",
+    leave: "상대 퇴장",
+    timeout: "시간 초과",
+    host_abandoned: "방장이 나감",
+  };
+  const reason = reasonLabel[state.loserReason ?? ""] ?? state.loserReason ?? "—";
+  const isAbandoned = state.loserReason === "host_abandoned";
+  const headerBg = youWon ? "bg-sheet-valid" : state.winnerSessionId ? "bg-sheet-error" : "bg-sheet-header";
+  const headerText = youWon ? "text-sheet-validText" : state.winnerSessionId ? "text-sheet-errorText" : "text-black";
   return (
-    <div className="mx-4 mt-4 border border-sheet-headerBorder bg-sheet-header p-4 text-center">
-      <div className="text-base">
-        🏁 게임 종료 — <b>{winnerNick}</b> 승리 (사유: {state.loserReason === "timeout" ? "시간 초과" : state.loserReason})
+    <div className={`border-y-2 border-sheet-selected ${headerBg} px-4 py-3 text-center`}>
+      <div className={`text-lg font-medium ${headerText}`}>
+        🏁 {isAbandoned ? "방 폐기됨" : "게임 종료"}
+        {winnerNick && (
+          <>
+            {" — "}
+            <b>{winnerNick}</b> 승리
+          </>
+        )}
+        {" "}<span className="text-sm font-normal opacity-80">(사유: {reason})</span>
       </div>
       <div className="mt-1 text-xs text-[#5f6368]">
-        {youWon ? "당신이 이겼습니다!" : state.winnerSessionId ? "다음 기회에…" : ""}
+        {isAbandoned
+          ? "방장이 대기 중에 나가 종료된 방입니다."
+          : youWon
+          ? "당신이 이겼습니다!"
+          : state.winnerSessionId
+          ? "아쉽지만 다음 기회에…"
+          : ""}
       </div>
     </div>
   );

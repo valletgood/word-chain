@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db/client";
 import { rooms } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -42,14 +42,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .where(eq(rooms.id, id));
 
   const state = await loadRoomState(id);
-  await publish(CH.room(id), "room_updated", state);
-  await publish(CH.lobby, "room_updated", {
-    id: room.id,
-    name: room.name,
-    hostNickname: room.hostNickname,
-    guestNickname: nickname,
-    status: room.status,
-    createdAt: room.createdAt.toISOString(),
-  });
+  after(
+    Promise.all([
+      publish(CH.room(id), "room_updated", state),
+      publish(CH.lobby, "room_updated", {
+        id: room.id,
+        name: room.name,
+        hostNickname: room.hostNickname,
+        guestNickname: nickname,
+        status: room.status,
+        createdAt: room.createdAt.toISOString(),
+      }),
+    ])
+  );
   return NextResponse.json({ room: state });
 }

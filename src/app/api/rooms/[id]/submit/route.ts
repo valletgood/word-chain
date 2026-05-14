@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db/client";
 import { rooms, words } from "@/db/schema";
 import { and, desc, eq } from "drizzle-orm";
@@ -9,8 +9,6 @@ import { validateSubmission, lastChar } from "@/lib/validate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const TURN_SECONDS = 30;
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -42,18 +40,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   } else {
     if (room.currentTurnSessionId !== sessionId) {
       return NextResponse.json({ error: "당신 차례가 아닙니다" }, { status: 403 });
-    }
-    if (room.turnDeadline && new Date() > room.turnDeadline) {
-      // 시간 초과 — 상대 승, 종료 처리
-      const winner = otherSession(room, sessionId);
-      await db
-        .update(rooms)
-        .set({ status: "finished", winnerSessionId: winner, loserReason: "timeout", updatedAt: new Date() })
-        .where(eq(rooms.id, id));
-      const state = await loadRoomState(id);
-      await publish(CH.room(id), "game_over", state);
-      await publish(CH.lobby, "room_removed", { id });
-      return NextResponse.json({ error: "시간 초과" }, { status: 410 });
     }
   }
 
@@ -105,25 +91,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     })
     .returning();
 
-  await publish(CH.room(id), "word_submitted", toWordRow(inserted));
+  // word_submitted 는 응답 후 백그라운드에서 발행 (사용자가 응답 기다리지 않게)
+  const wordRow = toWordRow(inserted);
 
   if (result.ok) {
-    // 턴 전환 (첫 단어면 host→guest, 아니면 상대로)
+    // 턴 전환 — DB 업데이트는 응답 전 필수 (다음 요청 정합성)
     const nextTurn = otherSession(room, sessionId);
-    const deadline = new Date(Date.now() + TURN_SECONDS * 1000);
     await db
       .update(rooms)
       .set({
         status: "playing",
         currentTurnSessionId: nextTurn,
-        turnDeadline: deadline,
+        turnDeadline: null,
         updatedAt: new Date(),
       })
       .where(eq(rooms.id, id));
 
     const state = await loadRoomState(id);
-    await publish(CH.room(id), "turn_changed", state);
-    if (isFirstWord) await publish(CH.lobby, "room_updated", { id });
+    after(
+      Promise.all([
+        publish(CH.room(id), "word_submitted", wordRow),
+        publish(CH.room(id), "turn_changed", state),
+        isFirstWord ? publish(CH.lobby, "room_updated", { id }) : Promise.resolve(),
+      ])
+    );
+  } else {
+    after(publish(CH.room(id), "word_submitted", wordRow));
   }
 
   return NextResponse.json({ ok: result.ok, reason: result.reason ?? null });

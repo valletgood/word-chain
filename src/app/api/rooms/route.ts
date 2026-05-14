@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/db/client";
 import { rooms } from "@/db/schema";
-import { desc, eq, ne } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { getOrCreateSessionId } from "@/lib/session";
 import { CH, publish } from "@/lib/realtime/bus";
 import type { RoomListItem } from "@/types/game";
@@ -24,7 +24,6 @@ export async function GET() {
   const list = await db
     .select()
     .from(rooms)
-    .where(ne(rooms.status, "finished"))
     .orderBy(desc(rooms.createdAt))
     .limit(50);
   return NextResponse.json({ rooms: list.map(toListItem) });
@@ -48,6 +47,6 @@ export async function POST(req: NextRequest) {
     })
     .returning();
 
-  await publish(CH.lobby, "room_created", toListItem(room));
+  after(publish(CH.lobby, "room_created", toListItem(room)));
   return NextResponse.json({ room: toListItem(room) });
 }

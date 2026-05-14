@@ -97,7 +97,7 @@ export function LobbyView({ initialRooms }: { initialRooms: RoomListItem[] }) {
   return (
     <div className="min-h-screen bg-white">
       <SheetToolbar
-        title="끝말잇기 — 게임방"
+        title="개발 검토서 — 항목 목록"
         right={
           <div className="flex items-center gap-2">
             <label className="text-xs text-[#5f6368]">닉네임</label>
@@ -176,7 +176,7 @@ export function LobbyView({ initialRooms }: { initialRooms: RoomListItem[] }) {
                 <td className="border border-sheet-border px-2 py-1">
                   <button
                     onClick={() => joinRoom(r.id)}
-                    disabled={joiningId === r.id || (r.status !== "waiting" && r.guestNickname !== null)}
+                    disabled={joiningId === r.id || r.status !== "waiting" || r.guestNickname !== null}
                     className="h-6 border border-sheet-headerBorder bg-white px-2 text-xs hover:bg-sheet-header disabled:opacity-50"
                   >
                     {joiningId === r.id ? "…" : "입장"}

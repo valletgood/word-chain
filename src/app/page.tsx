@@ -1,6 +1,6 @@
 import { db } from "@/db/client";
 import { rooms } from "@/db/schema";
-import { desc, ne } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { LobbyView } from "@/components/lobby/LobbyView";
 import type { RoomListItem } from "@/types/game";
 import { getOrCreateSessionId } from "@/lib/session";
@@ -14,7 +14,6 @@ export default async function Home() {
     const rows = await db
       .select()
       .from(rooms)
-      .where(ne(rooms.status, "finished"))
       .orderBy(desc(rooms.createdAt))
       .limit(50);
     list = rows.map((r) => ({
