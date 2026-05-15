@@ -27,15 +27,16 @@ export async function validateSubmission(opts: {
     }
   }
 
-  // duplicate (정답으로 채택된 동일 단어가 같은 방에 있으면 거부)
-  const dup = await db
-    .select({ id: words.id })
-    .from(words)
-    .where(and(eq(words.roomId, opts.roomId), eq(words.word, word), eq(words.isValid, true)))
-    .limit(1);
+  // 중복 체크(DB) 와 사전 조회(외부 API) 는 서로 독립적이므로 병렬 실행.
+  const [dup, inDict] = await Promise.all([
+    db
+      .select({ id: words.id })
+      .from(words)
+      .where(and(eq(words.roomId, opts.roomId), eq(words.word, word), eq(words.isValid, true)))
+      .limit(1),
+    existsInDict(word),
+  ]);
   if (dup.length > 0) return { ok: false, reason: "duplicate" };
-
-  const inDict = await existsInDict(word);
   if (!inDict) return { ok: false, reason: "not_in_dict" };
 
   return { ok: true };

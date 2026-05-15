@@ -19,7 +19,25 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const word = (body?.word ?? "").toString().trim();
   if (!word) return NextResponse.json({ error: "단어 필요" }, { status: 400 });
 
-  const [room] = await db.select().from(rooms).where(eq(rooms.id, id)).limit(1);
+  // room, lastValid (정답), lastAny (마지막 제출) 모두 서로 독립적이므로 병렬 조회.
+  const [roomRows, lastValidRows, lastAnyRows] = await Promise.all([
+    db.select().from(rooms).where(eq(rooms.id, id)).limit(1),
+    db
+      .select()
+      .from(words)
+      .where(and(eq(words.roomId, id), eq(words.isValid, true)))
+      .orderBy(desc(words.submissionIndex))
+      .limit(1),
+    db
+      .select()
+      .from(words)
+      .where(eq(words.roomId, id))
+      .orderBy(desc(words.submissionIndex))
+      .limit(1),
+  ]);
+  const room = roomRows[0];
+  const lastValid = lastValidRows[0];
+  const lastAny = lastAnyRows[0];
   if (!room) return NextResponse.json({ error: "방 없음" }, { status: 404 });
 
   // 두 플레이어 모두 차있어야 게임 가능
@@ -42,22 +60,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error: "당신 차례가 아닙니다" }, { status: 403 });
     }
   }
-
-  // 직전 유효 단어 조회
-  const [lastValid] = await db
-    .select()
-    .from(words)
-    .where(and(eq(words.roomId, id), eq(words.isValid, true)))
-    .orderBy(desc(words.submissionIndex))
-    .limit(1);
-
-  // 마지막 제출 (turnNumber/submissionIndex 계산용)
-  const [lastAny] = await db
-    .select()
-    .from(words)
-    .where(eq(words.roomId, id))
-    .orderBy(desc(words.submissionIndex))
-    .limit(1);
 
   const nickname =
     sessionId === room.hostSessionId ? room.hostNickname : room.guestNickname ?? "?";
@@ -95,7 +97,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const wordRow = toWordRow(inserted);
 
   if (result.ok) {
-    // 턴 전환 — DB 업데이트는 응답 전 필수 (다음 요청 정합성)
+    // 턴 전환 — DB 업데이트는 응답 전 필수 (다음 요청 정합성: 상대가 turn_changed
+    // 전에 submit 을 시도하더라도 currentTurnSessionId 가 이미 바뀌어 있어야 함)
     const nextTurn = otherSession(room, sessionId);
     await db
       .update(rooms)
@@ -107,13 +110,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       })
       .where(eq(rooms.id, id));
 
-    const state = await loadRoomState(id);
+    // loadRoomState (2 추가 DB 쿼리) 는 응답 후 백그라운드에서 수행
     after(
-      Promise.all([
-        publish(CH.room(id), "word_submitted", wordRow),
-        publish(CH.room(id), "turn_changed", state),
-        isFirstWord ? publish(CH.lobby, "room_updated", { id }) : Promise.resolve(),
-      ])
+      (async () => {
+        const state = await loadRoomState(id);
+        await Promise.all([
+          publish(CH.room(id), "word_submitted", wordRow),
+          publish(CH.room(id), "turn_changed", state),
+          isFirstWord ? publish(CH.lobby, "room_updated", { id }) : Promise.resolve(),
+        ]);
+      })()
     );
   } else {
     after(publish(CH.room(id), "word_submitted", wordRow));
